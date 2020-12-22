@@ -1,7 +1,7 @@
 # [Prediction of silver fir (Abies alba) occurrence in Tyrol](http://tomcat.as.freiraumev.de/sdm_ta/DSSG_FinalAssignment_SimonAlois.nb.html)
 
 authors:   
-Alois SIMON<sup>1,2*</sup>,
+Alois SIMON<sup>1,2*</sup>  
 1 Institute of Forest Ecology, Department of Forest and Soil Sciences, University of Natural Resources and Life Sciences Vienna, 
 Vienna, Austria  
 2 Department of Forest Planning, Forest Administration Tyrol, Office of the Tyrolean government, Innsbruck, Austria  
