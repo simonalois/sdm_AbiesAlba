@@ -1,4 +1,4 @@
-# [Prediction of silver fir (Abies alba) occurrence in Tyrol](http://tomcat.as.freiraumev.de/sdm_ta/DSSG_FinalAssignment_SimonAlois.nb.html#){:target="_blank" rel="noopener"}
+# [Prediction of silver fir (Abies alba) occurrence in Tyrol](http://tomcat.as.freiraumev.de/sdm_ta/DSSG_FinalAssignment_SimonAlois.nb.html)
 
 authors:   
 Alois SIMON<sup>1,2*</sup>,
