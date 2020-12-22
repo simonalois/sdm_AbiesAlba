@@ -1,0 +1,524 @@
+---
+title: "Data Science for social good"
+author: 'Alois Simon, StudentID: 00740857'
+date: "2020/09/18"
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
+    code_folding: hide
+subtitle: 'Assignement: Prediction of silver fir (Abies alba) occurrence in Tyrol'
+---
+Supervisor: Dr. Euro Beinat <br>
+
+##Description of the prediction task
+The tree species silver fir is a natural component of mountain forest in the federal state of Tyrol and in most parts of the European Alps and elsewhere. Due to intensive historical use of the forest with clear cuts and high stocks of ungulate game in recent decades, this tree species became vary rare. Nevertheless, silver fir provides important ecosystem services as soil stabilisation and turned out to be resilient to climate change. Moreover, in terms of biodiversity and habitat provision it is an important part of mountain forest ecosystems.  
+For these reasons, financial support for planting of silver fir trees is provided from the Tyrolean Forest Service. 
+Due to the currently reduced occurrence of the tree species not all adequate sites are known. Therefore, the prediction of silver fir occurrence in Tyrol is necessary. <br>
+The classification algorithm could be used to decide if a specific forest site is appropriate for the growth of silver fir. Based on that classification a financial support for afforestation with silver fir is granted.  
+
+
+##Description of the used data 
+For training the classification algorithm a dataset of tree species occurrences in the forestland of the federal state of Tyrol, Austria is used. It contains in total approximately 13.000 geo-referenced field observations (Forest Site Classifcation Tyrol, 2018) of tree species and potentially occurring tree species recorded by vegetation scientists. The 4.035 records with silver fir currently occurring are used as occurring (1) training data and the 5.999 records without silver fir are used as absent (0) training data.  
+The features are designed from derivates of the Digital Terrain Model (DTM) (eg. elevation, slope exposition), climatological data (e.g. temperature, precipitation), soil data (plant-available water storage capacity, acidity) and earth observation (vegetation indices). A detailed list of the features are given in Table 1. 
+
+Table 1: A compilation of all tested predictor variables (features) and the selection in the final model 
+
+| Variables                                                   |abrevation | selected|
+|:------------------------------------------------------------|:----------|:-------:|
+|Topopraghical Information from DTM, input scale: 5x5m raster           |||
+|aspect transformed [0 to 2]                                  |asp      |x|
+|slope [°]                                                    |slope    |x|
+|elevation [m]                                                |dgm      | |
+|curvature plan                                               |cur_pl   | |
+|curvature profile                                            |cur_pr   | |
+|convergence                                                  |conver   | |
+|SAGA wetness index                                           |swi      |x|
+|X-coordinate                                                 |coord_x  | |
+|Y-coordinate                                                 |coord_y  | |
+|Climatological Data, input scale various, climatic period: 1980-2010   |||
+|mean annual temperature (MAT) [°C], 50x50m                   |temp     |x|
+|minimum temperature [°C], 50x50m                             |temp_mim | |
+|continentality [°C], 500x500m                                |cont     |x|
+|end of frost period [day of year], 500x500m                  |frost    |x|
+|mean annual precipitation (MAP) [mm], 500x500m               |prec     |x|
+|precipitation sum of june, july, august [mm], 500x500m       |prec_jja | |
+|annual global radiation [kWh*m-2], 250x250m                  |rad      |x|
+|mean cloudiness [days], 250x250m                             |cloudy   | |
+|mean duration of vegetation period (>5 °C) [days], 500x500m  |veg_p    | |
+|mean duration of dry period [days], 500x500m                 |drought  | |
+|mean duration of snow cover [days], 500x500m                 |sc       |x|
+|mean duration of snow cover in march [days], 500x500m        |sc_m     |x| 
+|Remote Sensing Information, input scale: 10x10m raster Sentinel-2A     |||
+|normalised vegetation index [-1 to 1]                        |ndvi     |x|
+|Soil Data, input scale: 5x5m raster                                    |||
+|plant-available water storage capacity [dm3*m-2]             |pawc     |x|
+|mean soil reaction value [0 to 9]                            |mR       |x|
+
+##Explorative data analysis
+The location of the study area and the distribution of the field observation is shown in Figure 1. Already a pattern of occurrence is visible, with a main distribution range of silver fir in the northern and western parts of Tyrol.   
+
+![Figure 1: Location of the study area and the field observation used for the prediction task](data/overview_abiesalba.jpg)
+
+![Figure 2: Detailed field observation with selected feature vector for silver fir occourance](data/detail_abiesalba.jpg)
+
+Scatterplots were used to detect the correlation between the different features. Therefore, the features were grouped according to thier origin (Figure 3, Figure 4, Figure 5). Additionally, Figure 5 contain features that showed correlation between the groups (e.g. coordinates and precipitation). The strength of correlation is expressed by the Spearman´s rank correlation, because it is less sensitive to outliers than Pearson correlation. High values in the following graphic indicate a strong correlation. Especially between the climatic features the correlation is high. But also MAT (temp) and elevation (dgm), as well as the Y-coordinate (coord_y) and mean annual precipitation (prec) show a strong correlation. The correlation is later on used for feature selection, to avoid redundant features. 
+
+```{r, message=FALSE, warning=FALSE}
+#load data
+ta_df <- read.csv("data/ta_model.csv", sep=";", dec=",")
+
+#pannel funktion for proxydata
+panel.cor <- function(x, y, digits=2, prefix="", cex.cor)
+{
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r = (cor(x, y,method="spearman"))
+  txt <- format(c(r, 0.123456789), digits=digits)[1]
+  txt <- paste(prefix, txt, sep="")
+  if(missing(cex.cor)) cex <- 3/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex * (abs(r)/3))
+}
+```
+
+```{r}
+#plot proxydata DTM
+pairs(~ asp+slope+cur_pl+cur_pr+conver+swi+dgm,
+      data=ta_df,                                                 
+      lower.panel=panel.smooth, upper.panel=panel.cor,na.action=na.omit)
+```
+Figure 3: Correlation matrix for DTM Features
+
+```{r}
+#proxydata climate
+pairs(~ prec+prec_jja+drought+rad+temp+temp_min+cloudy+frost+veg_p+cont+sc+sc_m,
+      data=ta_df,                                                 
+      lower.panel=panel.smooth, upper.panel=panel.cor,na.action=na.omit)
+```
+Figure 4: Correlation matrix for Climatological Features
+```{r}
+#plot proxydata soil, vegetation, coordinate
+pairs(~ pawc+mR+ndvi+veg_p+temp+dgm+coord_y+coord_x+prec,
+      data=ta_df,                                                 
+      lower.panel=panel.smooth, upper.panel=panel.cor,na.action=na.omit)
+```
+Figure 5: Correlation matrix for Soil, Vegetation and Coordinate Features
+
+
+
+##Training of Deep Neural Networks
+For the prediction task a deep neural network was used. In a first attempt, the model was fitted with all features to evaluate the feature importance. In a second step, the model was fitted only with selected features. Subsequently the accuracy and bias (fairness) was analysed.    
+
+1) load librarys<br> 
+```{r, message=FALSE, warning=FALSE}
+library(reticulate)
+library(keras)
+library(tidyverse)
+library(caret)
+library(tensorflow)
+library(lime)
+library(fairness)
+```
+2) split and scale dataset<br> 
+The data was spit into 70% for training and 30% for testing.
+Because the features show different magnitudes, they were normalise through scaling and centering.
+```{r, message=FALSE, warning=FALSE}
+index <- caret::createDataPartition(ta_df$ab_alb, p=0.7, list=FALSE)
+
+train <- ta_df[index,] 
+test <- ta_df[-index,]
+
+x_train <- train %>%
+  select(c("asp", "slope","cur_pl","cur_pr", "conver","swi","prec","temp","rad", "ndvi", "dgm", "coord_y", "coord_x", "pawc", "mR","temp_min","cloudy", "frost", "veg_p", "cont", "sc", "sc_m", "prec_jja", "drought")) 
+y_train <- keras::to_categorical(train$ab_alb)
+
+x_test <- test %>%
+  select(c("asp", "slope","cur_pl","cur_pr", "conver","swi","prec","temp","rad", "ndvi", "dgm", "coord_y", "coord_x", "pawc", "mR","temp_min","cloudy", "frost", "veg_p", "cont", "sc", "sc_m", "prec_jja", "drought")) 
+y_test <- keras::to_categorical(test$ab_alb)
+
+ta_df <- rbind(x_test, x_train)
+mean_ta_df <- apply(ta_df, 2, mean)
+sd_ta_df<- apply(ta_df, 2, sd)
+
+x_train <- scale(x_train, center=mean_ta_df, scale=sd_ta_df)
+x_test <- scale(x_test, center=mean_ta_df, scale=sd_ta_df)
+```
+
+3) define model<br> 
+The model was defined with 3 hidden layers each with a 'relu' acitvation function. 
+The dropout rate was slightly decreased between each layer of the network.
+The final output layer was constructed by applying a 'sigmoid' activation function to get the probability of occurrance.
+For the loss function and optimizer, the 'binary crossentropy loss' and 'rmsprop' was used as it is a binary classification task.
+
+```{r, message=FALSE, warning=FALSE}
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 168, activation = 'relu', input_shape = ncol(x_train)) %>%
+  layer_dropout(rate = 0.4) %>%
+  layer_dense(units = 84, activation = 'relu') %>% 
+  layer_dropout(rate = 0.3) %>% 
+  layer_dense(units = 42, activation = 'relu') %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 2, activation = 'sigmoid')
+
+model %>% compile(
+  loss = 'binary_crossentropy',
+  optimizer = 'rmsprop',
+  metrics = c('accuracy')
+)
+```
+
+4) run model<br> 
+The model run was with a relatively small batch size of 5 over 50 epochs. For validation during the fitting process, 20% of the data were hold back in each epoch.  
+```{r, message=FALSE, warning=FALSE, results='hide'}
+set.seed(1234)
+history <- model %>% fit(
+  x_train, y_train, 
+  epochs = 50, 
+  batch_size = 5,
+  validation_split = 0.2
+)
+train_acc <- round(last(history$metrics$accuracy),2)
+```
+```{r}
+plot(history)
+```
+Figure 6: Training results for first model run
+<br>
+<br>
+
+5) evaluate model<br> 
+Evaluation was done by testing the model on unseen test data. Figure 7 show the confusion matrix of the predictions for the test data.
+```{r, message=FALSE, warning=FALSE, results='hide'}
+history_test <- model %>% evaluate(x_test, y_test)
+test_acc <- round(history_test$accuracy,2)
+```
+
+The first model showed an accuracy of `r train_acc` on the training data and an accuracy of `r test_acc` on the independent test data. As the similarity between these values is unusual, the results were double checked.   
+```{r}
+predictions_class <- model %>% predict_classes(x_test)
+plot(as.data.frame(as.factor(predictions_class)), as.factor(test$ab_alb), xlab="predicted", ylab="observed")
+```
+Figure 7: Results for prediction for the test data
+
+##Baseline for model evaluation
+The model results could be compared to literature values from comparable studies. Falk and Mellert (2011) reported in their study an AUC between 0.79 to 0.90 for inventory data and 0.84 to 0.98 for potential natural vegetation combined with inventory data. The lower values are for Generalised additive models and Boosted Regression Trees showed better ability to discriminate between presence and absence of silver fir in Bavaria, Germany. The dataset at hand, is comparable to the inventory data of Falk and Mellert (2011) as only recorded field occurrences are used and no occurrences from potential natural vegetation.  Nevertheless, the used dataset shows also properties of the combined dataset (inventory data and expert knowledge) as only absences that are in line with expert knowledge (potential natural vegetation) are used. Therefore, the baseline for the presented results are an AUC between 0.90 to 0.98.      
+
+##Feature selection and ranking
+For feature selection and ranking the LIME (Local Interpretable Model-agnostic Explanations) approach was applied (Ribeiro et al., 2016). This method explaines the outcome of black box models by fitting a local simple model around a single point and permutates this local fitting for all given points. This means is that for any given prediction and any given classifier it is able to determine a small set of features in the original data that has driven the outcome of the prediction. In practical terms LIME samples instances in the vicinity of the point under consideration (target) and weights the prediction of the complex model for the instances by the proximity to the target point. Then it fits a simple model (e.g. linear regression) to that subsample and identifies the features that are important for classification. Therefore, it gives for each case a local (single point) fidelity which is not globally (for the whole dataset) faithful.  The results of all that local fitting are the feature weights given in Fig. 8 and Fig. 11 and help to identify the important features.   
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+class(model)
+model_type.keras.engine.sequential.Sequential <- function(x, ...) {"classification"}
+
+predict_model.keras.engine.sequential.Sequential <- function(x, newdata, type, ...) {
+  pred <- predict_proba (object = x, x=as.matrix(newdata))
+  data.frame (positive=pred)
+}
+
+invisible(
+  lime::predict_model (x = model, newdata=x_test, type="raw") %>%
+    tibble::as.tibble()
+)
+explainer <- lime::lime (x=as.tibble(x_train), model=model, bin_continuous = FALSE)
+
+system.time (
+  explanation <- lime::explain (
+    x=as.tibble(x_test), 
+    explainer=explainer, 
+    n_labels=1, 
+    n_features=24, 
+    kernel_width=0.5))
+```
+
+```{r, fig.height = 8, fig.width = 15}
+plot_explanations (explanation, labeller= as_labeller(c('positive.1'= "not occuring", "positive.2" = "occuring")))
+```
+Figure 8: LIME Feature Importance Heatmap for test data (n=3010), all cases, all features used
+
+##Tune model and Analysis of model results
+1) select important features<br>
+Based on Figure 8 and the correlation matrix (Figure 3, Figure 4, Figure 5) of the features, only the important features, with a high or low feature weight (Figure 8) and with non-redundant information were selected. Furthermore, only features were kept that are directly operative e.g. mean annual temperature (temp) instead of elevation (dgm) which is an indirectly operative throw the high-temperature dependency (see high correlation in Figure 5). Additionally, attention was paid that the selected features can be dynamically exchanged against climate predictions under different emission scenarios. The selection of features is given in Table 1.  
+
+```{r, message=FALSE, warning=FALSE}
+#load data
+ta_df <- read.csv("data/ta_model.csv", sep=";", dec=",")
+index <- caret::createDataPartition(ta_df$ab_alb, p=0.7, list=FALSE)
+train2 <- ta_df[index,] 
+test2 <- ta_df[-index,]
+
+x_train2 <- train2 %>%
+  select(c("asp", "slope", "swi", "prec", "temp", "cont", "frost", "rad", "ndvi", "pawc", "mR", "sc", "sc_m")) 
+y_train2 <- keras::to_categorical(train2$ab_alb)
+
+x_test2 <- test2 %>%
+  select(c("asp", "slope", "swi","prec" ,"temp" ,"cont" , "frost", "rad", "ndvi", "pawc", "mR", "sc", "sc_m")) 
+y_test2 <- keras::to_categorical(test2$ab_alb)
+
+
+ta_df2 <- rbind(x_test2, x_train2)
+mean_ta_df2 <- apply(ta_df2, 2, mean)
+sd_ta_df2<- apply(ta_df2, 2, sd)
+
+x_train2 <- scale(x_train2, center=mean_ta_df2, scale=sd_ta_df2)
+x_test2 <- scale(x_test2, center=mean_ta_df2, scale=sd_ta_df2)
+
+```
+
+2) define model<br> 
+```{r, message=FALSE, warning=FALSE}
+model2 <- keras_model_sequential() %>% 
+  layer_dense(units = 168, activation = 'relu', input_shape = ncol(x_train2)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 84, activation = 'relu') %>% 
+  layer_dropout(rate = 0.2) %>% 
+  layer_dense(units = 42, activation = 'relu') %>%
+  layer_dropout(rate = 0.1) %>%
+  layer_dense(units = 2, activation = 'sigmoid')
+
+model2 %>% compile(
+  loss = 'binary_crossentropy',
+  optimizer = 'rmsprop',
+  metrics = c('accuracy')
+)
+```
+
+3) run model with reduced set of features
+```{r, message=FALSE, warning=FALSE, results='hide'}
+set.seed(12345)
+history2 <- model2 %>% fit(
+  x_train2, y_train2, 
+  epochs =50, 
+  batch_size = 5,
+  validation_split = 0.2
+)
+train_acc2 <- round(last(history2$metrics$accuracy),2)
+```
+```{r}
+plot(history2)
+```
+Figure 9: Training results for second model run with reduced set of features
+
+
+4) evaluate model<br>
+Evaluation was done by testing the model on unseen test data. Figure 9 show the result of the confusion matrix (Table 2) of the predictions for the test data.
+```{r, message=FALSE, warning=FALSE, results='hide'}
+history_test2 <- model2 %>% evaluate(x_test2, y_test2)
+test_acc2 <- round(history_test2$accuracy,2)
+```
+
+The updated model showed an accuracy of `r train_acc2` on the training data and an accuracy of `r test_acc2` on the independent test data.
+Compared with the first model (including all features) with and an accuracy of `r train_acc` on the training data an accuracy of `r test_acc` on the independent test data.
+4.1) 
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(yardstick)
+
+#predict class
+yhat_keras_class_vec <- 
+  predict_classes (object = model2, 
+                   x = as.matrix(x_test2)) %>%
+  as.vector()
+
+#predict probability
+yhat_keras_prob_vec <- 
+  predict_proba(object=model2, 
+                x = as.matrix(x_test2)) %>%
+  {`[`(.[,2])} %>% 
+  as.vector()
+
+
+estimates_keras_tbl <- tibble(
+    truth= as.factor(test$ab_alb) %>% 
+      fct_recode (Positive = "1", Negative = "0"),
+    estimate   = as.factor(yhat_keras_class_vec) %>% 
+      fct_recode (Positive = "1", Negative = "0"),
+    class_prob = yhat_keras_prob_vec)
+
+options(scipen = 999)
+
+head(estimates_keras_tbl, 10)
+
+options (yardstick.event_first = FALSE)
+```
+
+```{r}
+predictions2_class <- model2 %>% keras::predict_classes(x_test2)
+predictions2_prob <- model2 %>% keras::predict_proba(x_test2)
+plot(as.data.frame(as.factor(predictions2_class)), as.factor(test2$ab_alb), xlab="predicted", ylab="observed")
+```
+Figure 10: Results for prediction for the test data with reduced set of features
+
+The False Negative Rate (observed: 0, predicted:1) increased compared to the model including all features (Figure 7). In contrast the False Positive Rate deceased slightly (observed:1, predicted:0).  
+
+Table 2: Confusion table of prediction
+```{r}
+#Confusion Table
+estimates_keras_tbl %>% conf_mat (truth, estimate)
+```
+
+4.2) Accuracy of prediction 
+```{r}
+#Accuracy
+as.data.frame(estimates_keras_tbl %>% metrics (truth, estimate))
+```
+
+4.3) AUC of predition
+```{r}
+#AUC
+estimates_keras_tbl %>% roc_auc(truth, class_prob)
+```
+The given AUC is comparable with results reported by Falk and Mellert (2011) for silver fir distribution in Bavaria, Germany. 
+
+4.4) Precission and recall of prediction 
+```{r}
+#precision & recall
+as.data.frame(estimates_keras_tbl %>% precision(truth, estimate))
+as.data.frame(estimates_keras_tbl %>% recall(truth, estimate))
+```
+4.5) F1 Score
+```{r}
+#F1 Score
+estimates_keras_tbl %>% f_meas(truth, estimate, beta = 1)
+```
+
+5) feature importance
+```{r, message=FALSE, warning=FALSE, results='hide'}
+model_type.keras.engine.sequential.Sequential <- function(x, ...) {"classification"}
+
+predict_model.keras.engine.sequential.Sequential <- function(x, newdata, type, ...) {
+  pred <- predict_proba (object = x, x=as.matrix(newdata))
+  data.frame (positive=pred)
+}
+invisible(
+  lime::predict_model (x = model2, newdata=x_test2, type="raw") %>%
+    tibble::as.tibble()
+)
+
+explainer <- lime::lime (x=as.tibble(x_train2), model=model2, bin_continuous = FALSE)
+
+system.time (
+  explanation <- lime::explain (
+    x=as.tibble(x_test2), 
+    explainer=explainer, 
+    n_labels=1, 
+    n_features=13, 
+    kernel_width=0.5))
+```
+
+```{r, fig.height = 8, fig.width = 15}
+plot_explanations (explanation, labeller= as_labeller(c('positive.1'= "not occuring", "positive.2" = "occuring")))
+```
+Figure 11: LIME Feature Importance Heatmap for test data (n=3010), all cases, reduced set of features
+
+
+##Analysis of bias
+The bias of the model regarding it´s fairness was analysed with regard to the False Negative Rate (FNR). Since the classification will be used as a basis for the financial support for afforestation with silver fir, it is important that the FNR is equal for all features. For the analysis of the FNR the features are grouped and then compared to each other. For the comparison the important features (Figure 10) aspect (asp), plant-available water storage capacity (pawc), mean annual precipitation (prec), end of frost period (frost) and mean annual temperature (temp) were selected.
+A biased model will lead to disadvantages of financial assistance of landowners with properties at certain sites. For Example, a higher FNR at south exposed slopes (aspect) will have disadvantages for individuals or communities that own forests with this site conditions.   
+
+1) Group features into subgroups
+```{r, message=FALSE, warning=FALSE}
+test_analysis <- test2
+test_analysis$prediction_class <- as.numeric(predictions2_class)
+test_analysis$prediction_prob_pos <- as.numeric(predictions2_prob[,2])
+
+test_analysis$asp_group <- cut(test_analysis$asp, breaks = c(0, 0.5, 1.5, 2),
+      labels = c("north", "east&west", "south"),
+      include.lowest = TRUE)
+
+test_analysis$pawc_group <- cut(test_analysis$pawc, breaks = c(0, 50, 100, 150, 233),
+                               labels = c("very low", "intermediate", "high", "very high"),
+                               include.lowest = TRUE)
+
+test_analysis$prec_group <- cut(test_analysis$prec, breaks = c(664, 800, 1200, 1600, 2320),
+                               labels = c("low", "intermediate", "high", "very high"),
+                               include.lowest = TRUE)
+
+test_analysis$frost_group <- cut(test_analysis$frost, breaks = c(0, 20, 30, 50, 94),
+                                labels = c("low", "intermediate", "high", "very high"),
+                                include.lowest = TRUE)
+
+test_analysis$temp_group <- cut(test_analysis$temp, breaks = c(0, 4, 6, 7, 9),
+                                 labels = c("low", "intermediate", "high", "very high"),
+                                 include.lowest = TRUE)
+
+test_analysis <- test_analysis %>%
+  select(c("ab_alb", "prediction_class", "prediction_prob_pos", "asp_group", "pawc_group", "prec_group", "frost_group", "temp_group"))
+``` 
+
+2) Analyse False Negative Rate (FNR)<br>
+Except for aspect, the "intermediate" subgroup was used as a baseline for the false negative error rates. For aspect the subgroup “north” was selected. Lower rates, compared to the baseline will be reflected in numbers lower than 1, thus numbers lower than 1 mean better prediction for the subgroup.<br>
+
+2.1) FNR for aspect (asp)
+```{r, message=FALSE, warning=FALSE}
+fairness::fnr_parity(data=test_analysis, outcome="ab_alb", group="asp_group", preds="prediction_class", base="north")
+```
+Figure 12: FNR for aspect (asp) of test data (n=3010)
+
+The model shows no bias for aspect. <br>
+
+2.2) FNR for plant-available water storage capacity (pawc)
+```{r, message=FALSE, warning=FALSE}
+fairness::fnr_parity(data=test_analysis, outcome="ab_alb", group="pawc_group", preds="prediction_class", base="intermediate")
+```
+Figure 13: FNR for plant-available water storage capacity (pawc) of test data (n=3010) 
+
+The FNR is not uniform for the subgroups of plant-available water storage capacity. For “very low” and especially “very high” values the FNR is higher than for the other subgroups. Sites with “very low” and “very high” pawc have lower prediction accuracy (Figure 16).
+
+2.3) FNR for mean annual precipitation (prec)
+```{r, message=FALSE, warning=FALSE}
+fairness::fnr_parity(data=test_analysis, outcome="ab_alb", group="prec_group", preds="prediction_class", base="intermediate")
+```
+Figure 14: FNR for mean annual precipitation (prec) of test data (n=3010)
+
+The FNR is not uniform for the subgroups of precipitation. For “high” and especially “very high” values the FNR is higher than for the other subgroups. Regions with a high mean annual precipitation have lower prediction accuracy (Figure 18).
+
+2.4) FNR for end of frost period (frost)
+```{r, message=FALSE, warning=FALSE}
+fairness::fnr_parity(data=test_analysis, outcome="ab_alb", group="frost_group", preds="prediction_class", base="intermediate")
+```
+Figure 15: FNR for end of frost period (frost) of test data (n=3010)
+
+The bias of the FNR for end of frost period is low and the model is fair regarding this feature.   
+
+2.5) FNR for mean annual temperature (temp)
+```{r, message=FALSE, warning=FALSE}
+fairness::fnr_parity(data=test_analysis, outcome="ab_alb", group="temp_group", preds="prediction_class", base="intermediate")
+```
+Figure 16: FNR for mean annual temperature (temp) of test data (n=3010)
+
+
+The FNR is not uniform for the subgroups of temperature. For “high” and “intermediate” values the FNR is higher than for the other subgroups. Regions with a very high or low mean annual temperature have slightly higher prediction accuracy.
+
+3) Analyse ROC AUC for groups<br>
+Lower ROC-AUC will be reflected in numbers lower than 1 in the returned vector, thus numbers lower than 1 mean worse prediction for the subgroup. <br>
+
+3.1) ROC-AUC for plant-available water storage capacity (pawc) of test data (n=3010)
+```{r, message=FALSE, warning=FALSE}
+roc_pawc <- fairness::roc_parity(data=test_analysis, outcome="ab_alb", group="pawc_group", probs="prediction_prob_pos", base="intermediate")
+roc_pawc$ROCAUC_plot
+```
+Figure 17: ROC-AUC for plant-available water storage capacity (pawc) of test data (n=3010) 
+
+Sites with “very low” and “very high” pawc have lower prediction accuracy.
+
+3.2) ROC-AUC for mean annual precipitation (prec) of test data (n=3010)
+```{r, message=FALSE, warning=FALSE}
+roc_prec <- fairness::roc_parity(data=test_analysis, outcome="ab_alb", group="prec_group", probs="prediction_prob_pos", base="intermediate")
+roc_prec$ROCAUC_plot
+```
+Figure 18: ROC-AUC for mean annual precipitation (prec) of test data (n=3010)
+
+Regions with a high mean annual precipitation have lower prediction accuracy.
+
+##Results
+The model overall performance is quite satisfying with an accuracy of `r train_acc2` on the training data an accuracy of `r test_acc2` on the independent test data. The closeness of this values indicate that the model is not overfitting to the training data and is general enough to predict unknown sites. Even if the reduction of the number of features reduced the accuracy slightly, the applicability benefitted from the reduction. Only features were kept that are directly operative e.g. mean annual temperature instead of elevation which is an indirectly operative throw the high-temperature dependency. Furthermore, the selected features can be dynamically exchanged against climate predictions under different emission scenarios. 
+Furthermore, the given AUC of 0.93 (4.3) is comparable with 0.90 to 0.98 reported by Falk and Mellert (2011) for silver fir distribution in Bavaria, Germany. <br>
+For these reasons, the model is suitable for predicting the occurrence of silver fir (Abies alba) in the forest of the federal state of Tyrol, Austria. The model output could be used for granting of a financial support of afforestation measurements.   
+
+
+![Figure 19: Predicted probability of Abies alba for the study area](data/probability_abiesalba.jpg)
+
+##References
+- Falk, W., Mellert, K.H., 2011. Species distribution models as a tool for forest management planning under climate change: risk evaluation of Abies alba in Bavaria. Journal of Vegetation Science 22, 621-634
+- Forest Site Classifcation Tyrol, 2018. Waldtypenhandbuch. Amt der Tiroler Landesregierung, Innsbruck, AT.
+- Ribeiro, M.T., Singh, S., Guestrin, C., 2016. "Why Should I Trust You?" Explaining the Predictions of Any Classifier. KDD'16 Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 1135-1144
